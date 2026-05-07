@@ -1,4 +1,6 @@
 /.trae
 /stm32-debug-skill.tar.gz
+/.stm32-debug
+/scripts/__pycache__
 test-project/*
 swo.log

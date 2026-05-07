@@ -4,4 +4,5 @@ if [ -z "$1" ]; then
     exit 1
 fi
 ELF_FILE=$1
-openocd -f board/stm32f7discovery.cfg -c "program $ELF_FILE verify reset exit"
+OPENOCD_CONFIG=${OPENOCD_CONFIG:-board/stm32f7discovery.cfg}
+openocd -f "$OPENOCD_CONFIG" -c "program $ELF_FILE verify reset exit"

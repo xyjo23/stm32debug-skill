@@ -5,9 +5,12 @@
 ## ✨ 核心特性
 
 - **一键烧录**: 封装 OpenOCD 烧录流程，支持快速部署。
-- **实时监控 (无停机)**: 利用 GDB 和 OpenOCD TCL 接口，支持在程序运行期间实时读取全局变量（包括复杂的**结构体成员**、数组等）。
-- **寄存器解析**: 内置 `read_svd.py` 脚本，可直接解析 `.svd` 文件，根据外设和寄存器名称查看寄存器位域定义和当前值。
+- **统一调试 CLI**: 新增 `stm32-debug` 统一入口，覆盖读取、断点、单步、观察点、历史、一键调试循环和会话管理。
+- **实时监控 (无停机)**: 利用 GDB 和 OpenOCD TCL 接口，支持在程序运行期间实时读取全局变量、结构体成员、寄存器、寄存器位域以及直接内存地址。
+- **寄存器解析**: 内置 `read_svd.py` 脚本，可直接解析 `.svd` 文件，根据外设、寄存器和位域名称查看地址、掩码和定义。
+- **自动 OpenOCD 管理**: `stm32_monitor.py` 在需要时会自动拉起 OpenOCD，减少手工启动和残留进程问题。
 - **SWO 日志捕获**: 自动配置并捕获通过 SWO (Serial Wire Output) 输出的 `printf` 调试信息。
+- **断点与单步调试**: 支持断点、条件断点、观察点、继续执行、单步、调用栈、局部变量和寄存器查看。
 - **开箱即用**: 提供预打包好的 `stm32-debug-skill.tar.gz`，解压即用。
 
 ## 📦 包含内容
@@ -19,6 +22,8 @@ stm32-debug-skill/
 ├── SKILL.md                  # AI Agent 读取的技能说明和使用指南
 ├── STM32F746.svd             # (示例) 芯片 SVD 文件，用于解析寄存器
 └── scripts/
+    ├── stm32-debug           # 统一命令入口
+    ├── stm32_debug.py        # 统一 CLI 实现
     ├── flash.sh              # 固件烧录脚本
     ├── monitor_swo.sh        # SWO 日志监听脚本
     ├── read_svd.py           # SVD 解析与寄存器读取脚本
@@ -37,25 +42,57 @@ stm32-debug-skill/
 
 当将此 Skill 挂载到 AI Agent 后，你可以直接使用自然语言下达指令，Agent 会自动调用对应的脚本。
 
-### 1. 烧录固件
+### 1. 初始化一次调试会话
 ```bash
 # Agent 将执行：
-./scripts/flash.sh build/firmware.elf
+./scripts/stm32-debug start \
+  --elf build/firmware.elf \
+  --svd STM32F746.svd \
+  --source-root Core \
+  --build-cmd "cmake --build build/Release" \
+  --flash-elf build/firmware.elf
 ```
 
-### 2. 实时监控结构体成员
+### 2. 读取变量、寄存器、位域、地址
 ```bash
 # Agent 将执行：
-./scripts/stm32_monitor.py --elf build/firmware.elf --var "sensor_data.temperature" --type float --interval 1
+./scripts/stm32-debug read counter "my_sensor.value" --type uint
+./scripts/stm32-debug read 'GPIOA->ODR' GPIOA.MODER.MODER0 --type uint
+
+# 或读取直接地址：
+./scripts/stm32-debug read 0x20000000 --type hex
 ```
 
-### 3. 查看外设寄存器
+注意：带 `->` 的目标在 shell 中要加引号，或者改写成 `GPIOA.ODR` 这样的点号形式。
+
+### 3. 设置断点并单步调试
 ```bash
 # Agent 将执行：
-./scripts/stm32_monitor.py --svd STM32F746.svd --reg GPIOA MODER
+./scripts/stm32-debug break main.c:145
+./scripts/stm32-debug break HAL_I2C_Mem_Read --condition "voltage_index==2"
+./scripts/stm32-debug restart
+./scripts/stm32-debug continue
+./scripts/stm32-debug step 3
+./scripts/stm32-debug locals
+./scripts/stm32-debug backtrace
+./scripts/stm32-debug registers
 ```
 
-### 4. 监听 printf 日志 (SWO)
+### 4. 观察点和历史
+```bash
+# Agent 将执行：
+./scripts/stm32-debug watch voltage_index
+./scripts/stm32-debug history counter --limit 10
+./scripts/stm32-debug generate-script counter voltage
+```
+
+### 5. 一键调试循环
+```bash
+# Agent 将执行：
+./scripts/stm32-debug cycle counter voltage --flash --wait 10
+```
+
+### 6. 监听 printf 日志 (SWO)
 支持自定义 CPU 主频（如果芯片被配置为了非默认的 16MHz，比如 216MHz，需显式指定以保证波特率正确）：
 ```bash
 # Agent 将执行 (默认 16MHz)：
@@ -66,6 +103,30 @@ stm32-debug-skill/
 
 # 并在后台查看 swo.log
 ```
+
+如果不是 `stm32f7discovery`，也可以通过环境变量切换 OpenOCD 配置：
+```bash
+OPENOCD_CONFIG=board/stm32h7x.cfg ./scripts/monitor_swo.sh 400000000
+```
+
+### 7. SVD 获取方式
+当当前 Skill 未附带目标芯片的 SVD 时，推荐从以下来源获取：
+- STM32Cube 设备包自带的 CMSIS 目录
+- ST 官网对应系列的 STM32Cube 下载页
+- [CMSIS-SVD GitHub 镜像](https://github.com/posborne/cmsis-svd/tree/master/data/STMicro)
+
+### 8. 变量解释配置
+可以在项目根目录放置 `.stm32-debug.yaml` 或 `.stm32-debug.json`，给关键状态变量增加可读解释：
+
+```yaml
+variables:
+  test_step:
+    0: "Initializing"
+    100: "Complete"
+    99: "Failed"
+```
+
+之后 `stm32-debug read test_step` 和 `stm32-debug history test_step` 会附带解释文本。
 
 ## 📝 如何集成到你的 Agent
 
