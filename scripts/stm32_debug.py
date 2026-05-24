@@ -283,7 +283,7 @@ def run_gdb(state, extra_commands, batch=True):
                 for command in commands:
                     handle.write(command + "\n")
             result = subprocess.run(
-                ["gdb-multiarch", "--batch", "-x", command_file],
+                ["arm-none-eabi-gdb", "--batch", "-x", command_file],
                 capture_output=True,
                 text=True,
             )
@@ -291,7 +291,7 @@ def run_gdb(state, extra_commands, batch=True):
                 return result.stdout + ("\n" if result.stdout else "") + result.stderr
             return result.stdout or result.stderr
 
-        cmd = ["gdb-multiarch", elf]
+        cmd = ["arm-none-eabi-gdb", elf]
         for command in gdb_base_commands():
             cmd.extend(["-ex", command])
         for command in gdb_connect_commands(state):

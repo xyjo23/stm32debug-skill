@@ -18,7 +18,7 @@ DEFAULT_OPENOCD_CONFIG = os.environ.get("OPENOCD_CONFIG", "board/stm32f7discover
 def get_address_from_gdb(elf_file, expression):
     """Use GDB to resolve the address of a C expression."""
     cmd = [
-        "gdb-multiarch",
+        "arm-none-eabi-gdb",
         "--batch",
         "-ex",
         f"file {elf_file}",
@@ -38,12 +38,12 @@ def get_address_from_gdb(elf_file, expression):
             f"Error running GDB for '{expression}'.\nStdout: {exc.stdout}\nStderr: {exc.stderr}"
         ) from exc
     except FileNotFoundError as exc:
-        raise RuntimeError("Error: gdb-multiarch not found. Please install it.") from exc
+        raise RuntimeError("Error: arm-none-eabi-gdb not found. Please install it.") from exc
 
 
 def get_type_size_from_gdb(elf_file, expression):
     cmd = [
-        "gdb-multiarch",
+        "arm-none-eabi-gdb",
         "--batch",
         "-ex",
         f"file {elf_file}",
