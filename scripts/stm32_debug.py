@@ -170,11 +170,14 @@ def start_openocd(state):
     last_error = None
     for attempt in range(1, 4):
         with log_path.open("a", encoding="utf-8") as log_handle:
+            kwargs = {}
+            if os.name != 'nt':
+                kwargs['preexec_fn'] = os.setsid
             process = subprocess.Popen(
                 ["openocd", "-f", openocd["config"]],
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
-                preexec_fn=os.setsid,
+                **kwargs
             )
 
         deadline = time.time() + 8
